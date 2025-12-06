@@ -136,8 +136,22 @@ impl From<&str> for Line {
                 };
 
                 let replacement = match unicode_width {
-                    0 => Some('·'),
-                    _ => None,
+                    0 => {
+                        if grapheme.chars().all(|c| c.is_control()) {
+                            Some('▯')
+                        } else {
+                            Some('·')
+                        }
+                    }
+                    _ => {
+                        if grapheme.chars().all(|c| c == '\t') {
+                            Some(' ')
+                        } else if grapheme.trim().is_empty() {
+                            Some('␣')
+                        } else {
+                            None
+                        }
+                    }
                 };
 
                 TextFragment {
