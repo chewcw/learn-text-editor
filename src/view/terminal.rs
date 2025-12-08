@@ -1,7 +1,7 @@
 use crate::{
     editor::{buffer::Buffer, editor_command::EditorCommand},
     view::{
-        Location, Position, Size, View,
+        Location, Position, Size, TextFragment, View,
         terminal_command::{Direction, TerminalCommand},
     },
 };
@@ -12,7 +12,10 @@ use crossterm::{
     queue, style,
     terminal::{self, Clear, enable_raw_mode},
 };
-use std::io::{self, Write, stdout};
+use std::{
+    fmt::Display,
+    io::{self, Write, stdout},
+};
 
 const NAME: &str = env!("CARGO_PKG_NAME");
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -126,6 +129,42 @@ impl Terminal {
         self.queue_command(terminal::EnterAlternateScreen)?
             .flush()?;
         Ok(&self)
+    }
+
+    pub fn typing(&mut self, c: char) -> io::Result<()> {
+        let current_caret_line = self.location.line_index;
+        let current_caret_col = self.location.grapheme_index;
+
+        match self.buffer.lines.get_mut(current_caret_line) {
+            Some(line) => {
+                // Split the fragments after the caret position out
+                // TODO: Handle a bug that inserts at the end of the line with incorrect index
+                let mut fragments_after_caret = line.fragments.split_off(current_caret_col);
+                // Insert the new character as a fragment at the caret position
+                line.fragments.push(TextFragment::from(c));
+                // Re-append the fragments after the caret position
+                line.fragments.append(&mut fragments_after_caret);
+                // Move the caret right after the inserted character
+                let _ = self.move_caret_to_location(Direction::Right);
+                self.needs_render = true;
+            }
+            None => {}
+        };
+
+        eprintln!("Inserted char '{c}' at line {current_caret_line}, col {current_caret_col}");
+        eprintln!(
+            "Line after insertion: {:?}",
+            self.buffer
+                .lines
+                .get(current_caret_line)
+                .unwrap()
+                .fragments
+                .iter()
+                .map(|fragment| &fragment.grapheme)
+                .collect::<Vec<&String>>()
+        );
+
+        Ok(())
     }
 }
 
@@ -318,8 +357,17 @@ impl View for Terminal {
                 Ok(_) => Ok(()),
                 Err(err) => Err(err),
             },
+            TerminalCommand::OrdinaryChar(key_code) => {
+                let c = key_code.as_char();
+                match self.typing(c.expect("c should be a char")) {
+                    Ok(_) => Ok(()),
+                    Err(_) => Ok(()), // Just ignore the error for now
+                }
+            }
+            TerminalCommand::FunctionKey(n) => Ok(()),
+            TerminalCommand::SpecialKey(ordinary_key) => Ok(()),
             TerminalCommand::Resize(size) => Ok(self.resize(size)),
-            TerminalCommand::Quit => Ok(()),
+            _ => Ok(()),
         }
     }
 
@@ -341,14 +389,14 @@ impl View for Terminal {
         }
 
         match TerminalCommand::try_from(event) {
-            Ok(command) => {
-                if matches!(command, TerminalCommand::Quit) {
-                    self.terminate()?;
-                    action(EditorCommand::Quit);
-                } else {
-                    self.handle_command(command)?;
-                }
+            Ok(command) if matches!(command, TerminalCommand::Quit) => {
+                self.terminate()?;
+                action(EditorCommand::Quit);
             }
+            Ok(command) if !matches!(command, TerminalCommand::Unknown) => {
+                self.handle_command(command)?;
+            }
+            Ok(_) => {}
             Err(err) => {
                 #[cfg(debug_assertions)]
                 {

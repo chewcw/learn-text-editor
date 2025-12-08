@@ -33,7 +33,7 @@ where
 
 /// Location is the absolute coordinates in the document
 /// Location is measured in graphemes
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, Debug)]
 pub struct Location {
     pub line_index: usize,     // Line number in the document (row)
     pub grapheme_index: usize, // Grapheme index within that line (column)
@@ -73,7 +73,7 @@ pub struct Size {
     pub height: usize,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Line {
     fragments: Vec<TextFragment>,
 }
@@ -165,7 +165,7 @@ impl From<&str> for Line {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum GraphemeWidth {
     Half,
     Full,
@@ -180,9 +180,19 @@ impl GraphemeWidth {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TextFragment {
     grapheme: String,
     rendered_width: GraphemeWidth,
     replacement: Option<char>,
+}
+
+impl From<char> for TextFragment {
+    fn from(value: char) -> Self {
+        Self {
+            grapheme: value.to_string(),
+            rendered_width: GraphemeWidth::Half,
+            replacement: None,
+        }
+    }
 }

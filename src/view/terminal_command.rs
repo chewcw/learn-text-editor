@@ -12,10 +12,24 @@ pub enum Direction {
     End,
 }
 
+pub enum SpecialKey {
+    Backspace,
+    Delete,
+    Enter,
+    Tab,
+    BackTab,
+    CapsLock,
+    Insert,
+}
+
 pub enum TerminalCommand {
     MoveCaret(Direction),
     Resize(Size),
     Quit,
+    Unknown,
+    OrdinaryChar(KeyCode),
+    FunctionKey(u8),
+    SpecialKey(SpecialKey),
 }
 
 impl TryFrom<CrossTermEvent> for TerminalCommand {
@@ -35,7 +49,16 @@ impl TryFrom<CrossTermEvent> for TerminalCommand {
                 KeyCode::PageUp => Ok(Self::MoveCaret(Direction::PageUp)),
                 KeyCode::PageDown => Ok(Self::MoveCaret(Direction::PageDown)),
                 KeyCode::Char('q') if modifiers.contains(KeyModifiers::CONTROL) => Ok(Self::Quit),
-                _ => Err(format!("Unsupported key event for EditorCommand: {code:?}").to_string()),
+                KeyCode::F(n) if (1..=12).contains(&n) => Ok(Self::FunctionKey(n)),
+                KeyCode::Backspace => Ok(Self::SpecialKey(SpecialKey::Backspace)),
+                KeyCode::Delete => Ok(Self::SpecialKey(SpecialKey::Delete)),
+                KeyCode::Enter => Ok(Self::SpecialKey(SpecialKey::Enter)),
+                KeyCode::Tab => Ok(Self::SpecialKey(SpecialKey::Tab)),
+                KeyCode::BackTab => Ok(Self::SpecialKey(SpecialKey::BackTab)),
+                KeyCode::CapsLock => Ok(Self::SpecialKey(SpecialKey::CapsLock)),
+                KeyCode::Insert => Ok(Self::SpecialKey(SpecialKey::Insert)),
+                KeyCode::Char(c) => Ok(Self::OrdinaryChar(KeyCode::Char(c))),
+                _ => Ok(Self::Unknown),
             },
             CrossTermEvent::Resize(width_u16, height_u16) => {
                 let height = height_u16 as usize;
