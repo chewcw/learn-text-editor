@@ -1,21 +1,18 @@
 use crate::{
     editor::{buffer::Buffer, editor_command::EditorCommand},
     view::{
-        Location, Position, Size, TextFragment, View,
-        terminal_command::{Direction, TerminalCommand},
+        Line, Location, Position, Size, TextFragment, View,
+        terminal_command::{Direction, SpecialKey, TerminalCommand},
     },
 };
 use crossterm::{
     Command,
     cursor::{self},
-    event::{Event, KeyEvent, KeyEventKind, read},
+    event::{Event, KeyCode, KeyEvent, KeyEventKind, read},
     queue, style,
     terminal::{self, Clear, enable_raw_mode},
 };
-use std::{
-    fmt::Display,
-    io::{self, Write, stdout},
-};
+use std::io::{self, Write, stdout};
 
 const NAME: &str = env!("CARGO_PKG_NAME");
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -131,41 +128,141 @@ impl Terminal {
         Ok(&self)
     }
 
-    pub fn typing(&mut self, c: char) -> io::Result<()> {
-        let current_caret_line = self.location.line_index;
-        let current_caret_col = self.location.grapheme_index;
+    pub fn handle_ordinary_typing(&mut self, char: Option<char>) -> io::Result<()> {
+        match char {
+            Some(c) => {
+                let current_caret_line = self.location.line_index;
+                let current_caret_col = self.location.grapheme_index;
 
-        match self.buffer.lines.get_mut(current_caret_line) {
-            Some(line) => {
-                // Split the fragments after the caret position out
-                // TODO: Handle a bug that inserts at the end of the line with incorrect index
-                let mut fragments_after_caret = line.fragments.split_off(current_caret_col);
-                // Insert the new character as a fragment at the caret position
-                line.fragments.push(TextFragment::from(c));
-                // Re-append the fragments after the caret position
-                line.fragments.append(&mut fragments_after_caret);
-                // Move the caret right after the inserted character
-                let _ = self.move_caret_to_location(Direction::Right);
-                self.needs_render = true;
+                match self.buffer.lines.get_mut(current_caret_line) {
+                    Some(line) => {
+                        // Split the fragments after the caret position out
+                        if line.fragments.get(current_caret_col).is_none() && line.fragments.len() == 0 {
+                            line.fragments.push(TextFragment::from('\n'));
+                        }
+                        let mut fragments_after_caret = line.fragments.split_off(current_caret_col);
+                        // Insert the new character as a fragment at the caret position
+                        line.fragments.push(TextFragment::from(c));
+                        // Re-append the fragments after the caret position
+                        line.fragments.append(&mut fragments_after_caret);
+                        // Move the caret right after the inserted character
+                        self.move_caret_to_location(Direction::Right)?;
+                        self.needs_render = true;
+
+                        // eprintln!(
+                        //     "Inserted char '{c}' at line {current_caret_line}, col {current_caret_col}"
+                        // );
+                        // eprintln!(
+                        //     "Line after insertion: {:?}",
+                        //     self.buffer
+                        //         .lines
+                        //         .get(current_caret_line)
+                        //         .unwrap()
+                        //         .fragments
+                        //         .iter()
+                        //         .map(|fragment| &fragment.grapheme)
+                        //         .collect::<Vec<&String>>()
+                        // );
+                        Ok(())
+                    }
+                    None => Ok(()),
+                }
             }
-            None => {}
+            None => todo!(),
+        }
+    }
+
+    pub fn handle_special_key(&mut self, special_key: SpecialKey) -> io::Result<()> {
+        match special_key {
+            SpecialKey::Backspace => todo!(),
+            SpecialKey::Enter => {
+                let c = '\n';
+                let current_caret_line = self.location.line_index;
+                let current_caret_col = self.location.grapheme_index;
+
+                match self.buffer.lines.get_mut(current_caret_line) {
+                    Some(line) => {
+                        // Split the fragments after the caret position out
+                        let fragments_after_caret = line.fragments.split_off(current_caret_col);
+                        line.fragments.push(TextFragment::from(c));
+                        // Insert a new line after the current line
+                        self.buffer.new_line(
+                            current_caret_line,
+                            Some(Line {
+                                fragments: fragments_after_caret,
+                            }),
+                        );
+                        self.location.line_index += 1;
+                        // self.move_caret_to_location(Direction::Down)?;
+                    }
+                    None => {}
+                };
+            }
+            SpecialKey::Tab => todo!(),
+            SpecialKey::BackTab => todo!(),
+            SpecialKey::Delete => todo!(),
+            SpecialKey::Insert => todo!(),
+            SpecialKey::CapsLock => todo!(),
         };
-
-        eprintln!("Inserted char '{c}' at line {current_caret_line}, col {current_caret_col}");
-        eprintln!(
-            "Line after insertion: {:?}",
-            self.buffer
-                .lines
-                .get(current_caret_line)
-                .unwrap()
-                .fragments
-                .iter()
-                .map(|fragment| &fragment.grapheme)
-                .collect::<Vec<&String>>()
-        );
-
+        self.needs_render = true;
         Ok(())
     }
+
+    // pub fn typing(&mut self, command: TerminalCommand) -> io::Result<()> {
+    //     match command {
+    //         TerminalCommand::OrdinaryChar(key_code) => {
+    //             match key_code.as_char() {
+    //                 Some(c) => {
+    //                     let current_caret_line = self.location.line_index;
+    //                     let current_caret_col = self.location.grapheme_index;
+    //
+    //                     match self.buffer.lines.get_mut(current_caret_line) {
+    //                         Some(line) => {
+    //                             // Split the fragments after the caret position out
+    //                             // TODO: Handle a bug that inserts at the end of the line with incorrect index
+    //                             let mut fragments_after_caret =
+    //                                 line.fragments.split_off(current_caret_col);
+    //                             // Insert the new character as a fragment at the caret position
+    //                             line.fragments.push(TextFragment::from(c));
+    //                             // Re-append the fragments after the caret position
+    //                             line.fragments.append(&mut fragments_after_caret);
+    //                             // Move the caret right after the inserted character
+    //                             let _ = self.move_caret_to_location(Direction::Right);
+    //                             self.needs_render = true;
+    //
+    //                             eprintln!(
+    //                                 "Inserted char '{c}' at line {current_caret_line}, col {current_caret_col}"
+    //                             );
+    //                             eprintln!(
+    //                                 "Line after insertion: {:?}",
+    //                                 self.buffer
+    //                                     .lines
+    //                                     .get(current_caret_line)
+    //                                     .unwrap()
+    //                                     .fragments
+    //                                     .iter()
+    //                                     .map(|fragment| &fragment.grapheme)
+    //                                     .collect::<Vec<&String>>()
+    //                             );
+    //                         }
+    //                         None => {}
+    //                     };
+    //                 }
+    //                 None => {
+    //                     eprintln!("KeyCode is not a character: {:?}", key_code);
+    //                 }
+    //             }
+    //         }
+    //         TerminalCommand::SpecialKey(key_code) => {
+    //             // TODO: Handle special keys like Backspace, Delete, Enter, etc.
+    //         }
+    //         _ => {
+    //             return Ok(());
+    //         }
+    //     };
+    //
+    //     Ok(())
+    // }
 }
 
 impl View for Terminal {
@@ -184,7 +281,19 @@ impl View for Terminal {
                 Direction::Up => {
                     // Move up within the document
                     self.location.line_index = if row > 0 {
-                        self.location.line_index.saturating_sub(1)
+                        let line_index = self.location.line_index.saturating_sub(1);
+
+                        // If the current column is beyond the longest column in the new line,
+                        // adjust it to the end of that line
+                        let longest_col_in_line = match self.buffer.lines.get(line_index) {
+                            Some(line) => line.graphemes_width(),
+                            None => 0,
+                        };
+                        if self.location.grapheme_index > longest_col_in_line {
+                            self.location.grapheme_index = longest_col_in_line;
+                        }
+
+                        line_index
                     } else {
                         // Stay at the top if already at row
                         0
@@ -194,6 +303,16 @@ impl View for Terminal {
                     // Move down within the document
                     if row < self.buffer.line_count().saturating_sub(1) {
                         self.location.line_index = row.saturating_add(1);
+                        // If the current column is beyond the longest column in the new line,
+                        // adjust it to the end of that line
+                        let longest_col_in_line =
+                            match self.buffer.lines.get(self.location.line_index) {
+                                Some(line) => line.graphemes_width(),
+                                None => 0,
+                            };
+                        if self.location.grapheme_index > longest_col_in_line {
+                            self.location.grapheme_index = longest_col_in_line;
+                        }
                     }
                 }
                 Direction::Left => {
@@ -359,13 +478,18 @@ impl View for Terminal {
             },
             TerminalCommand::OrdinaryChar(key_code) => {
                 let c = key_code.as_char();
-                match self.typing(c.expect("c should be a char")) {
+                match self.handle_ordinary_typing(c) {
+                    Ok(_) => Ok(()),
+                    Err(_) => Ok(()), // Just ignore the error for now
+                }
+            }
+            TerminalCommand::SpecialKey(key_code) => {
+                match self.handle_special_key(key_code) {
                     Ok(_) => Ok(()),
                     Err(_) => Ok(()), // Just ignore the error for now
                 }
             }
             TerminalCommand::FunctionKey(n) => Ok(()),
-            TerminalCommand::SpecialKey(ordinary_key) => Ok(()),
             TerminalCommand::Resize(size) => Ok(self.resize(size)),
             _ => Ok(()),
         }
