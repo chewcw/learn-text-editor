@@ -22,6 +22,21 @@ pub enum SpecialKey {
     Insert,
 }
 
+impl PartialEq for SpecialKey {
+    fn eq(&self, other: &Self) -> bool {
+        matches!(
+            (self, other),
+            (SpecialKey::Backspace, SpecialKey::Backspace)
+                | (SpecialKey::Delete, SpecialKey::Delete)
+                | (SpecialKey::Enter, SpecialKey::Enter)
+                | (SpecialKey::Tab, SpecialKey::Tab)
+                | (SpecialKey::BackTab, SpecialKey::BackTab)
+                | (SpecialKey::CapsLock, SpecialKey::CapsLock)
+                | (SpecialKey::Insert, SpecialKey::Insert)
+        )
+    }
+}
+
 pub enum TerminalCommand {
     MoveCaret(Direction),
     Resize(Size),

@@ -137,7 +137,9 @@ impl Terminal {
                 match self.buffer.lines.get_mut(current_caret_line) {
                     Some(line) => {
                         // Split the fragments after the caret position out
-                        if line.fragments.get(current_caret_col).is_none() && line.fragments.len() == 0 {
+                        if line.fragments.get(current_caret_col).is_none()
+                            && line.fragments.len() == 0
+                        {
                             line.fragments.push(TextFragment::from('\n'));
                         }
                         let mut fragments_after_caret = line.fragments.split_off(current_caret_col);
@@ -173,37 +175,37 @@ impl Terminal {
     }
 
     pub fn handle_special_key(&mut self, special_key: SpecialKey) -> io::Result<()> {
-        match special_key {
-            SpecialKey::Backspace => todo!(),
-            SpecialKey::Enter => {
+        let current_caret_line = self.location.line_index;
+        let current_caret_col = self.location.grapheme_index;
+        match self.buffer.lines.get_mut(current_caret_line) {
+            Some(line) if special_key == SpecialKey::Enter => {
                 let c = '\n';
-                let current_caret_line = self.location.line_index;
-                let current_caret_col = self.location.grapheme_index;
-
-                match self.buffer.lines.get_mut(current_caret_line) {
-                    Some(line) => {
-                        // Split the fragments after the caret position out
-                        let fragments_after_caret = line.fragments.split_off(current_caret_col);
-                        line.fragments.push(TextFragment::from(c));
-                        // Insert a new line after the current line
-                        self.buffer.new_line(
-                            current_caret_line,
-                            Some(Line {
-                                fragments: fragments_after_caret,
-                            }),
-                        );
-                        self.location.line_index += 1;
-                        // self.move_caret_to_location(Direction::Down)?;
-                    }
-                    None => {}
-                };
+                // Split the fragments after the caret position out
+                let fragments_after_caret = line.fragments.split_off(current_caret_col);
+                line.fragments.push(TextFragment::from(c));
+                // Insert a new line after the current line
+                self.buffer.new_line(
+                    current_caret_line,
+                    Some(Line {
+                        fragments: fragments_after_caret,
+                    }),
+                );
+                self.location.line_index += 1;
+                // self.move_caret_to_location(Direction::Down)?;
             }
-            SpecialKey::Tab => todo!(),
-            SpecialKey::BackTab => todo!(),
-            SpecialKey::Delete => todo!(),
-            SpecialKey::Insert => todo!(),
-            SpecialKey::CapsLock => todo!(),
-        };
+            Some(_) if special_key == SpecialKey::Tab => todo!(),
+            Some(_) if special_key == SpecialKey::BackTab => todo!(),
+            Some(line) if special_key == SpecialKey::Delete => {
+                line.fragments.remove(current_caret_col);
+            }
+            Some(line) if special_key == SpecialKey::Backspace => {
+                line.fragments.remove(current_caret_col.saturating_sub(1));
+                self.move_caret_to_location(Direction::Left)?;
+            }
+            Some(_) if special_key == SpecialKey::Insert => todo!(),
+            Some(_) if special_key == SpecialKey::CapsLock => todo!(),
+            None | Some(_) => {}
+        }
         self.needs_render = true;
         Ok(())
     }
