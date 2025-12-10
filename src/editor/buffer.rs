@@ -11,7 +11,7 @@ impl Buffer {
         Self { lines }
     }
 
-    pub fn line_count(&self) -> usize {
+    pub fn line_count(&mut self) -> usize {
         self.lines.len()
     }
 

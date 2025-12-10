@@ -8,7 +8,7 @@ use crate::{
 use crossterm::{
     Command,
     cursor::{self},
-    event::{Event, KeyCode, KeyEvent, KeyEventKind, read},
+    event::{Event, KeyEvent, KeyEventKind, read},
     queue, style,
     terminal::{self, Clear, enable_raw_mode},
 };
@@ -177,8 +177,18 @@ impl Terminal {
     pub fn handle_special_key(&mut self, special_key: SpecialKey) -> io::Result<()> {
         let current_caret_line = self.location.line_index;
         let current_caret_col = self.location.grapheme_index;
-        match self.buffer.lines.get_mut(current_caret_line) {
-            Some(line) if special_key == SpecialKey::Enter => {
+        let last_line_index = self.buffer.line_count().saturating_sub(1);
+        let last_line_len = match self.buffer.lines.get(last_line_index) {
+            Some(line) => line.fragments.len(),
+            None => 0,
+        };
+
+        match special_key {
+            SpecialKey::Enter => {
+                let line = match self.buffer.lines.get_mut(current_caret_line) {
+                    Some(line) => line,
+                    None => return Ok(()),
+                };
                 let c = '\n';
                 // Split the fragments after the caret position out
                 let fragments_after_caret = line.fragments.split_off(current_caret_col);
@@ -193,20 +203,96 @@ impl Terminal {
                 self.location.line_index += 1;
                 // self.move_caret_to_location(Direction::Down)?;
             }
-            Some(_) if special_key == SpecialKey::Tab => todo!(),
-            Some(_) if special_key == SpecialKey::BackTab => todo!(),
-            Some(line) if special_key == SpecialKey::Delete => {
-                line.fragments.remove(current_caret_col);
+            SpecialKey::Tab => todo!(),
+            SpecialKey::BackTab => todo!(),
+            SpecialKey::Delete => {
+                let last_grapheme = self
+                    .buffer
+                    .lines
+                    .get(current_caret_line)
+                    .map_or(0, |line| line.fragments.len().saturating_sub(1));
+
+                // Bottom right of the document should do nothing
+                if current_caret_line == last_line_index
+                    && current_caret_col == last_line_len.saturating_sub(1)
+                {
+                    return Ok(());
+                } else {
+                    let next_line_index = current_caret_line.saturating_add(1);
+
+                    // Normal delete within a line
+                    if current_caret_line != last_line_index && current_caret_col != last_grapheme {
+                        let line = match self.buffer.lines.get_mut(current_caret_line) {
+                            Some(line) => line,
+                            None => return Ok(()),
+                        };
+                        line.fragments.remove(current_caret_col);
+                        self.needs_render = true;
+                        return Ok(());
+                    }
+                    // Delete at the end of the line should merge with the next line
+                    if current_caret_line != last_line_index && current_caret_col == last_grapheme {
+                        // Split off all lines after this current line first
+                        let next_line_onwards = self.buffer.lines.split_off(next_line_index);
+                        // Get the current line
+                        let line = match self.buffer.lines.get_mut(current_caret_line) {
+                            Some(line) => line,
+                            None => return Ok(()),
+                        };
+                        match next_line_onwards.first() { // This is the next line
+                            Some(next_line) => {
+                                line.fragments.extend_from_slice(&next_line.fragments);
+                                // Append the rest of the lines after the next line
+                                self.buffer.lines.extend_from_slice(&next_line_onwards);
+                                // Delete the next line
+                                self.buffer.lines.remove(next_line_index);
+                                self.needs_render = true;
+                                return Ok(())
+                            }
+                            None => {}
+                        };
+                    }
+                }
             }
-            Some(line) if special_key == SpecialKey::Backspace => {
-                line.fragments.remove(current_caret_col.saturating_sub(1));
-                self.move_caret_to_location(Direction::Left)?;
+            SpecialKey::Backspace => {
+                let line = match self.buffer.lines.get_mut(current_caret_line) {
+                    Some(line) => line,
+                    None => return Ok(()),
+                };
+                // Normal backspace within a line
+                if current_caret_line != 0 && current_caret_col != 0 {
+                    line.fragments.remove(current_caret_col.saturating_sub(1));
+                    self.move_caret_to_location(Direction::Left)?;
+                    self.needs_render = true;
+                    return Ok(());
+                }
+                // Top left of the document should do nothing
+                if current_caret_line == 0 && current_caret_col == 0 {
+                    self.needs_render = true;
+                    return Ok(());
+                }
+                if current_caret_line != 0 && current_caret_col == 0 {
+                    let mut fragments_to_move = line.fragments.split_off(0);
+                    // Merge with previous line
+                    let previous_line_index = current_caret_line.saturating_sub(1);
+                    if let Some(previous_line) = self.buffer.lines.get_mut(previous_line_index) {
+                        previous_line.fragments.append(&mut fragments_to_move);
+                    }
+                    // Delete the current line
+                    self.buffer.lines.remove(current_caret_line);
+                    self.location.line_index = previous_line_index;
+                    self.location.grapheme_index = match self.buffer.lines.get(previous_line_index)
+                    {
+                        Some(prev_line) => prev_line.fragments.len(),
+                        None => 0,
+                    };
+                    self.needs_render = true;
+                    return Ok(());
+                }
             }
-            Some(_) if special_key == SpecialKey::Insert => todo!(),
-            Some(_) if special_key == SpecialKey::CapsLock => todo!(),
-            None | Some(_) => {}
+            SpecialKey::Insert => todo!(),
+            SpecialKey::CapsLock => todo!(),
         }
-        self.needs_render = true;
         Ok(())
     }
 
