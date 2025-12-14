@@ -239,7 +239,8 @@ impl Terminal {
                             Some(line) => line,
                             None => return Ok(()),
                         };
-                        match next_line_onwards.first() { // This is the next line
+                        match next_line_onwards.first() {
+                            // This is the next line
                             Some(next_line) => {
                                 line.fragments.extend_from_slice(&next_line.fragments);
                                 // Append the rest of the lines after the next line
@@ -247,7 +248,7 @@ impl Terminal {
                                 // Delete the next line
                                 self.buffer.lines.remove(next_line_index);
                                 self.needs_render = true;
-                                return Ok(())
+                                return Ok(());
                             }
                             None => {}
                         };
@@ -260,7 +261,7 @@ impl Terminal {
                     None => return Ok(()),
                 };
                 // Normal backspace within a line
-                if current_caret_line != 0 && current_caret_col != 0 {
+                if current_caret_col != 0 {
                     line.fragments.remove(current_caret_col.saturating_sub(1));
                     self.move_caret_to_location(Direction::Left)?;
                     self.needs_render = true;

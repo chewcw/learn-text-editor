@@ -3,6 +3,7 @@ pub(crate) mod terminal_command;
 
 use crate::editor::editor_command::EditorCommand;
 use crate::view::terminal_command::{Direction, TerminalCommand};
+use std::fmt::Display;
 use std::io;
 use std::ops::Range;
 use unicode_segmentation::UnicodeSegmentation;
@@ -162,6 +163,18 @@ impl From<&str> for Line {
             })
             .collect();
         Self { fragments }
+    }
+}
+
+impl Display for Line {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let result = self
+            .fragments
+            .iter()
+            .map(|fragment| fragment.grapheme.as_str())
+            .collect::<String>();
+
+        write!(f, "{}", result)
     }
 }
 
