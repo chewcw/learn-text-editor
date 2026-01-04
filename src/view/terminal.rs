@@ -130,58 +130,36 @@ impl Terminal {
 
     pub fn handle_ordinary_typing(&mut self, char: Option<char>) -> io::Result<()> {
         match char {
+            None => return Ok(()),
             Some(c) => {
-                let current_caret_line = self.location.line_index;
-                let current_caret_col = self.location.grapheme_index;
-
-                match self.buffer.lines.get_mut(current_caret_line) {
-                    Some(line) => {
-                        // Split the fragments after the caret position out
-                        if line.fragments.get(current_caret_col).is_none()
-                            && line.fragments.len() == 0
-                        {
-                            line.fragments.push(TextFragment::from('\n'));
-                        }
-                        let mut fragments_after_caret = line.fragments.split_off(current_caret_col);
-                        // Insert the new character as a fragment at the caret position
-                        line.fragments.push(TextFragment::from(c));
-                        // Re-append the fragments after the caret position
-                        line.fragments.append(&mut fragments_after_caret);
-                        // Move the caret right after the inserted character
-                        self.move_caret_to_location(Direction::Right)?;
-                        self.needs_render = true;
-
-                        // eprintln!(
-                        //     "Inserted char '{c}' at line {current_caret_line}, col {current_caret_col}"
-                        // );
-                        // eprintln!(
-                        //     "Line after insertion: {:?}",
-                        //     self.buffer
-                        //         .lines
-                        //         .get(current_caret_line)
-                        //         .unwrap()
-                        //         .fragments
-                        //         .iter()
-                        //         .map(|fragment| &fragment.grapheme)
-                        //         .collect::<Vec<&String>>()
-                        // );
-                        Ok(())
-                    }
-                    None => Ok(()),
+                let old_len = self
+                    .buffer
+                    .lines
+                    .get(self.location.line_index)
+                    .map_or(0, Line::grapheme_count);
+                self.buffer.insert_char(c, self.location);
+                let new_len = self
+                    .buffer
+                    .lines
+                    .get(self.location.line_index)
+                    .map_or(0, Line::grapheme_count);
+                if new_len.saturating_sub(old_len) > 0 {
+                    self.move_caret_to_location(Direction::Right)?;
                 }
+                self.needs_render = true;
+                return Ok(());
             }
-            None => todo!(),
         }
     }
 
     pub fn handle_special_key(&mut self, special_key: SpecialKey) -> io::Result<()> {
         let current_caret_line = self.location.line_index;
         let current_caret_col = self.location.grapheme_index;
-        let last_line_index = self.buffer.line_count().saturating_sub(1);
-        let last_line_len = match self.buffer.lines.get(last_line_index) {
-            Some(line) => line.fragments.len(),
-            None => 0,
-        };
+        // let last_line_index = self.buffer.line_count().saturating_sub(1);
+        // let last_line_len = match self.buffer.lines.get(last_line_index) {
+        //     Some(line) => line.fragments.len(),
+        //     None => 0,
+        // };
 
         match special_key {
             SpecialKey::Enter => {
@@ -194,7 +172,7 @@ impl Terminal {
                 let fragments_after_caret = line.fragments.split_off(current_caret_col);
                 line.fragments.push(TextFragment::from(c));
                 // Insert a new line after the current line
-                self.buffer.new_line(
+                self.buffer.insert_newline(
                     current_caret_line,
                     Some(Line {
                         fragments: fragments_after_caret,
@@ -202,58 +180,80 @@ impl Terminal {
                 );
                 self.location.line_index += 1;
                 // self.move_caret_to_location(Direction::Down)?;
+                self.needs_render = true;
             }
-            SpecialKey::Tab => todo!(),
+            // SpecialKey::Tab => {
+            //     let current_caret_line = self.location.line_index;
+            //     let current_caret_col = self.location.grapheme_index;
+            //     match self.buffer.lines.get_mut(current_caret_line) {
+            //         Some(line) => {
+            //             let mut fragments_after_caret = line.fragments.split_off(current_caret_col);
+            //             // Insert the tab character as 4 spaces
+            //             let tab = '\t';
+            //             line.fragments.push(TextFragment::from(tab));
+            //             // Re-append the fragments after the caret position
+            //             line.fragments.append(&mut fragments_after_caret);
+            //             // Move the caret right after the inserted tab character
+            //             // Consider the tab as width of 4 spaces
+            //             self.move_caret_to_location(Direction::Right)?;
+            //             self.needs_render = true;
+            //         }
+            //         None => return Ok(()),
+            //     };
+            // }
             SpecialKey::BackTab => todo!(),
             SpecialKey::Delete => {
-                let last_grapheme = self
-                    .buffer
-                    .lines
-                    .get(current_caret_line)
-                    .map_or(0, |line| line.fragments.len().saturating_sub(1));
-
-                // Bottom right of the document should do nothing
-                if current_caret_line == last_line_index
-                    && current_caret_col == last_line_len.saturating_sub(1)
-                {
-                    return Ok(());
-                } else {
-                    let next_line_index = current_caret_line.saturating_add(1);
-
-                    // Normal delete within a line
-                    if current_caret_line != last_line_index && current_caret_col != last_grapheme {
-                        let line = match self.buffer.lines.get_mut(current_caret_line) {
-                            Some(line) => line,
-                            None => return Ok(()),
-                        };
-                        line.fragments.remove(current_caret_col);
-                        self.needs_render = true;
-                        return Ok(());
-                    }
-                    // Delete at the end of the line should merge with the next line
-                    if current_caret_line != last_line_index && current_caret_col == last_grapheme {
-                        // Split off all lines after this current line first
-                        let next_line_onwards = self.buffer.lines.split_off(next_line_index);
-                        // Get the current line
-                        let line = match self.buffer.lines.get_mut(current_caret_line) {
-                            Some(line) => line,
-                            None => return Ok(()),
-                        };
-                        match next_line_onwards.first() {
-                            // This is the next line
-                            Some(next_line) => {
-                                line.fragments.extend_from_slice(&next_line.fragments);
-                                // Append the rest of the lines after the next line
-                                self.buffer.lines.extend_from_slice(&next_line_onwards);
-                                // Delete the next line
-                                self.buffer.lines.remove(next_line_index);
-                                self.needs_render = true;
-                                return Ok(());
-                            }
-                            None => {}
-                        };
-                    }
-                }
+                self.buffer.delete(self.location);
+                self.needs_render = true;
+                return Ok(());
+                // let last_grapheme = self
+                //     .buffer
+                //     .lines
+                //     .get(current_caret_line)
+                //     .map_or(0, |line| line.fragments.len().saturating_sub(1));
+                //
+                // // Bottom right of the document should do nothing
+                // if current_caret_line == last_line_index
+                //     && current_caret_col == last_line_len.saturating_sub(1)
+                // {
+                //     return Ok(());
+                // } else {
+                //     let next_line_index = current_caret_line.saturating_add(1);
+                //
+                //     // Normal delete within a line
+                //     if current_caret_line != last_line_index && current_caret_col != last_grapheme {
+                //         let line = match self.buffer.lines.get_mut(current_caret_line) {
+                //             Some(line) => line,
+                //             None => return Ok(()),
+                //         };
+                //         line.fragments.remove(current_caret_col);
+                //         self.needs_render = true;
+                //         return Ok(());
+                //     }
+                //     // Delete at the end of the line should merge with the next line
+                //     if current_caret_line != last_line_index && current_caret_col == last_grapheme {
+                //         // Split off all lines after this current line first
+                //         let next_line_onwards = self.buffer.lines.split_off(next_line_index);
+                //         // Get the current line
+                //         let line = match self.buffer.lines.get_mut(current_caret_line) {
+                //             Some(line) => line,
+                //             None => return Ok(()),
+                //         };
+                //         match next_line_onwards.first() {
+                //             // This is the next line
+                //             Some(next_line) => {
+                //                 line.fragments.extend_from_slice(&next_line.fragments);
+                //                 // Append the rest of the lines after the next line
+                //                 self.buffer.lines.extend_from_slice(&next_line_onwards);
+                //                 // Delete the next line
+                //                 self.buffer.lines.remove(next_line_index);
+                //                 self.needs_render = true;
+                //                 return Ok(());
+                //             }
+                //             None => {}
+                //         };
+                //     }
+                // }
             }
             SpecialKey::Backspace => {
                 let line = match self.buffer.lines.get_mut(current_caret_line) {
@@ -381,12 +381,11 @@ impl View for Terminal {
                         if self.location.grapheme_index > longest_col_in_line {
                             self.location.grapheme_index = longest_col_in_line;
                         }
-
                         line_index
                     } else {
                         // Stay at the top if already at row
                         0
-                    };
+                    }
                 }
                 Direction::Down => {
                     // Move down within the document
@@ -578,6 +577,12 @@ impl View for Terminal {
                     Err(_) => Ok(()), // Just ignore the error for now
                 }
             }
+            // TerminalCommand::InsertChar(char) => {
+            //     match self.handle_ordinary_typing(Some(char)) {
+            //         Ok(_) => Ok(()),
+            //         Err(_) => Ok(()), // Just ignore the error for now
+            //     }
+            // }
             TerminalCommand::FunctionKey(n) => Ok(()),
             TerminalCommand::Resize(size) => Ok(self.resize(size)),
             _ => Ok(()),

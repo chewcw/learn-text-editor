@@ -76,7 +76,7 @@ pub struct Size {
 
 #[derive(Clone, Debug)]
 pub struct Line {
-    fragments: Vec<TextFragment>,
+    pub(crate) fragments: Vec<TextFragment>,
 }
 
 impl Line {
@@ -123,6 +123,37 @@ impl Line {
 
         result
     }
+
+    pub fn insert_char(&mut self, character: char, at: usize) {
+        let mut result = String::new();
+        for (index, fragment) in self.fragments.iter().enumerate() {
+            if index == at {
+                result.push(character);
+            }
+            result.push_str(&fragment.grapheme);
+        }
+        if at >= self.fragments.len() {
+            result.push(character);
+        }
+        self.fragments = Line::from(result.as_str()).fragments;
+    }
+
+    pub fn append(&mut self, other: Self) {
+        self.fragments.extend(other.fragments);
+    }
+
+    pub fn delete(&mut self, at: usize) {
+        let mut result = String::new();
+        self.fragments
+            .iter()
+            .enumerate()
+            .for_each(|(index, fragment)| {
+                if index != at {
+                    result.push_str(&fragment.grapheme);
+                }
+            });
+        self.fragments = Line::from(result.as_str()).fragments;
+    }
 }
 
 impl From<&str> for Line {
@@ -131,29 +162,51 @@ impl From<&str> for Line {
             .graphemes(true)
             .map(|grapheme| {
                 let unicode_width = grapheme.width();
-                let rendered_width = match unicode_width {
+                let mut rendered_width = match unicode_width {
                     0 | 1 => GraphemeWidth::Half,
                     _ => GraphemeWidth::Full,
                 };
+                let mut replacement: Option<char> = None;
 
-                let replacement = match unicode_width {
-                    0 => {
-                        if grapheme.chars().all(|c| c.is_control()) {
-                            Some('▯')
-                        } else {
-                            Some('·')
+                match grapheme {
+                    "\t" => {
+                        replacement = Some(' ');
+                        rendered_width = GraphemeWidth::Half;
+                    }
+                    _ if unicode_width > 0 && grapheme.trim().is_empty() => {
+                        replacement = Some('␣');
+                        rendered_width = GraphemeWidth::Half;
+                    }
+                    _ if unicode_width == 0 => {
+                        let mut chars = grapheme.chars();
+                        if let Some(ch) = chars.next() {
+                            if ch.is_control() && chars.next().is_none() {
+                                replacement = Some('▯');
+                                rendered_width = GraphemeWidth::Half;
+                            }
                         }
                     }
-                    _ => {
-                        if grapheme.chars().all(|c| c == '\t') {
-                            Some(' ')
-                        } else if grapheme.trim().is_empty() {
-                            Some('␣')
-                        } else {
-                            None
-                        }
-                    }
-                };
+                    _ => {}
+                }
+
+                // let replacement = match unicode_width {
+                //     0 => {
+                //         if grapheme.chars().all(|c| c.is_control()) {
+                //             Some('▯')
+                //         } else {
+                //             Some('·')
+                //         }
+                //     }
+                //     _ => {
+                //         if grapheme.chars().all(|c| c == '\t') {
+                //             Some(' ')
+                //         } else if grapheme.trim().is_empty() {
+                //             Some('␣')
+                //         } else {
+                //             None
+                //         }
+                //     }
+                // };
 
                 TextFragment {
                     grapheme: grapheme.to_string(),
@@ -193,6 +246,15 @@ impl GraphemeWidth {
     }
 }
 
+impl Into<u16> for GraphemeWidth {
+    fn into(self) -> u16 {
+        match self {
+            GraphemeWidth::Half => 1,
+            GraphemeWidth::Full => 2,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct TextFragment {
     grapheme: String,
@@ -202,6 +264,16 @@ pub struct TextFragment {
 
 impl From<char> for TextFragment {
     fn from(value: char) -> Self {
+        Self {
+            grapheme: value.to_string(),
+            rendered_width: GraphemeWidth::Half,
+            replacement: None,
+        }
+    }
+}
+
+impl From<&str> for TextFragment {
+    fn from(value: &str) -> Self {
         Self {
             grapheme: value.to_string(),
             rendered_width: GraphemeWidth::Half,

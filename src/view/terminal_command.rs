@@ -16,7 +16,7 @@ pub enum SpecialKey {
     Backspace,
     Delete,
     Enter,
-    Tab,
+    // Tab,
     BackTab,
     CapsLock,
     Insert,
@@ -29,7 +29,7 @@ impl PartialEq for SpecialKey {
             (SpecialKey::Backspace, SpecialKey::Backspace)
                 | (SpecialKey::Delete, SpecialKey::Delete)
                 | (SpecialKey::Enter, SpecialKey::Enter)
-                | (SpecialKey::Tab, SpecialKey::Tab)
+                // | (SpecialKey::Tab, SpecialKey::Tab)
                 | (SpecialKey::BackTab, SpecialKey::BackTab)
                 | (SpecialKey::CapsLock, SpecialKey::CapsLock)
                 | (SpecialKey::Insert, SpecialKey::Insert)
@@ -68,7 +68,7 @@ impl TryFrom<CrossTermEvent> for TerminalCommand {
                 KeyCode::Backspace => Ok(Self::SpecialKey(SpecialKey::Backspace)),
                 KeyCode::Delete => Ok(Self::SpecialKey(SpecialKey::Delete)),
                 KeyCode::Enter => Ok(Self::SpecialKey(SpecialKey::Enter)),
-                KeyCode::Tab => Ok(Self::SpecialKey(SpecialKey::Tab)),
+                KeyCode::Tab => Ok(Self::OrdinaryChar(KeyCode::Char('\t'))),
                 KeyCode::BackTab => Ok(Self::SpecialKey(SpecialKey::BackTab)),
                 KeyCode::CapsLock => Ok(Self::SpecialKey(SpecialKey::CapsLock)),
                 KeyCode::Insert => Ok(Self::SpecialKey(SpecialKey::Insert)),

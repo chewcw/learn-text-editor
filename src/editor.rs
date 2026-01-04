@@ -33,6 +33,7 @@ where
         let position = self.ui.get_position()?;
         self.ui.hide_caret()?;
         self.ui.render()?;
+        eprintln!("DEBUG: Refreshed screen at position: ({}, {})", position.x, position.y);
         self.ui.move_caret_to_position(position)?;
         self.ui.show_caret()?;
         self.ui.flush()?;
