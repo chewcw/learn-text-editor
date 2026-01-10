@@ -163,23 +163,8 @@ impl Terminal {
 
         match special_key {
             SpecialKey::Enter => {
-                let line = match self.buffer.lines.get_mut(current_caret_line) {
-                    Some(line) => line,
-                    None => return Ok(()),
-                };
-                let c = '\n';
-                // Split the fragments after the caret position out
-                let fragments_after_caret = line.fragments.split_off(current_caret_col);
-                line.fragments.push(TextFragment::from(c));
-                // Insert a new line after the current line
-                self.buffer.insert_newline(
-                    current_caret_line,
-                    Some(Line {
-                        fragments: fragments_after_caret,
-                    }),
-                );
-                self.location.line_index += 1;
-                // self.move_caret_to_location(Direction::Down)?;
+                self.buffer.insert_newline(self.location);
+                self.move_caret_to_location(Direction::Right)?;
                 self.needs_render = true;
             }
             // SpecialKey::Tab => {

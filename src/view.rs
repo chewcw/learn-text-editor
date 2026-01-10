@@ -74,7 +74,7 @@ pub struct Size {
     pub height: usize,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Line {
     pub(crate) fragments: Vec<TextFragment>,
 }
@@ -153,6 +153,16 @@ impl Line {
                 }
             });
         self.fragments = Line::from(result.as_str()).fragments;
+    }
+
+    pub fn split(&mut self, at: usize) -> Self {
+        if at > self.fragments.len() {
+            return Self::default();
+        }
+        let remainder = self.fragments.split_off(at);
+        Self {
+            fragments: remainder,
+        }
     }
 }
 

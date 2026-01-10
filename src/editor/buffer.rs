@@ -15,14 +15,12 @@ impl Buffer {
         self.lines.len()
     }
 
-    // insert_newline inserts a new empty line after the specified index
-    pub fn insert_newline(&mut self, after_index: usize, line: Option<Line>) {
-        let line_at_index = self.lines.get_mut(after_index);
-        match line_at_index {
-            Some(_) => self
-                .lines
-                .insert(after_index + 1, line.unwrap_or_else(|| Line::from(""))),
-            None => self.lines.push(line.unwrap_or_else(|| Line::from(""))),
+    pub fn insert_newline(&mut self, at: Location) {
+        if at.line_index == self.lines.len() {
+            self.lines.push(Line::default());
+        } else if let Some(line) = self.lines.get_mut(at.line_index) {
+            let grapheme = line.split(at.grapheme_index);
+            self.lines.insert(at.line_index.saturating_add(1), grapheme);
         }
     }
 
